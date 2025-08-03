@@ -9,8 +9,15 @@ const CSVProcessor = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [apiResponse, setApiResponse] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [mathOperations, setMathOperations] = useState([]);
+  const [currentMathOperation, setCurrentMathOperation] = useState({
+    selectedField: '',
+    operation: 'default',
+    value: '',
+    newFieldName: ''
+  });
 
-  // CSV dosyasını okuma
+  // CSV dosyasını okuma.
   const handleFileUpload = (event, csvType) => {
     const file = event.target.files[0];
     if (file && file.type === 'text/csv') {
@@ -93,6 +100,93 @@ const CSVProcessor = () => {
     });
   };
 
+  //Matematik işlemi ekleme
+  const addMathOperation = () => {
+    if (!currentMathOperation.selectedField ||
+        currentMathOperation.operation === 'default' || 
+        !currentMathOperation.value || 
+        !currentMathOperation.newFieldName) {
+      alert('Please fill in all fields!');
+      return;
+    }
+
+    const newOperation = { ...currentMathOperation, id: Date.now() };
+    setMathOperations([...mathOperations, newOperation]);
+    
+    // Formu temizle
+    setCurrentMathOperation({
+      selectedField: '',
+      operation: 'default',
+      value: '',
+      newFieldName: ''
+    });
+  };
+
+  // Matematik işlemini silme
+  const removeMathOperation = (operationId) => {
+    setMathOperations(mathOperations.filter(op => op.id !== operationId));
+  };
+
+  // Matematik işlemlerini uygulama
+  const applyMathOperations = () => {
+    if (mathOperations.length === 0) return;
+
+    let updatedHeaders = [...primaryCsv.headers];
+    let updatedData = primaryCsv.data.map(row => [...row]);
+
+    mathOperations.forEach(operation => {
+      const fieldIndex = primaryCsv.headers.indexOf(operation.selectedField);
+      
+      if (fieldIndex === -1) {
+        console.error(`Field "${operation.selectedField}" not found!`);
+        return;
+      }
+
+      // Yeni kolon başlığı ekle
+      if (!updatedHeaders.includes(operation.newFieldName)) {
+        updatedHeaders.push(operation.newFieldName);
+        
+        // Her satır için matematik işlemi yap
+        updatedData = updatedData.map(row => {
+          const currentValue = parseFloat(row[fieldIndex]) || 0;
+          const operationValue = parseFloat(operation.value) || 0;
+          let result;
+
+          switch (operation.operation) {
+            case 'default':
+              result = 0;
+              break;
+            case 'add':
+              result = currentValue + operationValue;
+              break;
+            case 'subtract':
+              result = currentValue - operationValue;
+              break;
+            case 'multiply':
+              result = currentValue * operationValue;
+              break;
+            case 'divide':
+              result = operationValue !== 0 ? currentValue / operationValue : 0;
+              break;
+            case 'percentage':
+              result = (currentValue * operationValue) / 100;
+              break;
+            default:
+              result = currentValue;
+          }
+
+          return [...row, result.toFixed(2)];
+        });
+      }
+    });
+
+    setPrimaryCsv({
+      ...primaryCsv,
+      headers: updatedHeaders,
+      data: updatedData
+    });
+  };
+
   // CSV verisini JSON obje formatına çevirme
   const convertToJSON = () => {
     return primaryCsv.data.map(row => {
@@ -158,6 +252,14 @@ const CSVProcessor = () => {
   const previewJSON = () => {
     const jsonData = convertToJSON();
     return jsonData.slice(0, 3);
+  };
+
+  // Sayısal fields filtrele
+  const getNumericFields = () => {
+    return primaryCsv.headers.filter((header, index) => {
+      const sampleValues = primaryCsv.data.slice(0, 5).map(row => row[index]);
+      return sampleValues.some(value => !isNaN(parseFloat(value)));
+    });
   };
 
   return (
@@ -255,7 +357,128 @@ const CSVProcessor = () => {
           </div>
         </div>
       )}
+      {/* Calculate */}
+      {primaryCsv.headers.length > 0 && (
+        <div className="math-operations-container">
+          <h3 className="math-operations-title">
+            <span>🧮</span>
+            Calculate
+          </h3>
+          
+          <div className="math-operation-form">
+            <div className="math-form-grid">
+              <div className="math-form-item">
+                <label>Field Select:</label>
+                <select
+                  value={currentMathOperation.selectedField}
+                  onChange={(e) => setCurrentMathOperation({
+                    ...currentMathOperation,
+                    selectedField: e.target.value
+                  })}
+                  className="math-select"
+                >
+                  <option value="">Fields</option>
+                  {getNumericFields().map((field, index) => (
+                    <option key={index} value={field}>
+                      {field}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
+              <div className="math-form-item">
+                <label>Process:</label>
+                <select
+                  value={currentMathOperation.operation}
+                  onChange={(e) => setCurrentMathOperation({
+                    ...currentMathOperation,
+                    operation: e.target.value
+                  })}
+                  className="math-select"
+                >
+                  <option value="default">Process select</option>
+                  <option value="add">Add (+)</option>
+                  <option value="subtract">Subtract (-)</option>
+                  <option value="multiply">Multiply (×)</option>
+                  <option value="divide">Divide (÷)</option>
+                  <option value="percentage">Percentage (%)</option>
+                </select>
+              </div>
+
+              <div className="math-form-item">
+                <label>Value:</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={currentMathOperation.value}
+                  onChange={(e) => setCurrentMathOperation({
+                    ...currentMathOperation,
+                    value: e.target.value
+                  })}
+                  className="math-input"
+                  placeholder="Number input"
+                />
+              </div>
+
+              <div className="math-form-item">
+                <label>New Field Name:</label>
+                <input
+                  type="text"
+                  value={currentMathOperation.newFieldName}
+                  onChange={(e) => setCurrentMathOperation({
+                    ...currentMathOperation,
+                    newFieldName: e.target.value
+                  })}
+                  className="math-input"
+                  placeholder="New field name input"
+                />
+              </div>
+            </div>
+
+            <button 
+              onClick={addMathOperation}
+              className="btn-add-math-operation"
+            >
+              ➕ Add action 
+            </button>
+          </div>
+
+          {/* Actions */}
+          {mathOperations.length > 0 && (
+            <div className="math-operations-list">
+              <h4>Added Actions:</h4>
+              {mathOperations.map((operation) => (
+                <div key={operation.id} className="math-operation-item">
+                  <span className="math-operation-description">
+                    <strong>{operation.newFieldName}</strong> = {operation.selectedField} 
+                    {operation.operation === 'default'}
+                    {operation.operation === 'add' && ' + '}
+                    {operation.operation === 'subtract' && ' - '}
+                    {operation.operation === 'multiply' && ' × '}
+                    {operation.operation === 'divide' && ' ÷ '}
+                    {operation.operation === 'percentage' && ' × '}
+                    {operation.value}
+                    {operation.operation === 'percentage' && '%'}
+                  </span>
+                  <button 
+                    onClick={() => removeMathOperation(operation.id)}
+                    className="btn-remove-math-operation"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+              
+              <button 
+                onClick={applyMathOperations}
+                className="btn-apply-math-operations"
+              >
+                ✅ Apply Actions
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {/* JSON Preview */}
       {primaryCsv.data.length > 0 && (
         <div className="json-preview-container">
